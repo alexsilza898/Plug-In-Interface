@@ -190,6 +190,11 @@ public slots:
 
 // define your actions: usually, one action per button
 private:
+    /// Path to RoboDK root (usually C:/RoboDK/)
+    QString PathRoot;
+
+    /// Path to Plugins folder (usually C:/RoboDK/bin/plugins/)
+    QString PathPlugins;
 
     /// Path to Apps folder (usually C:/RoboDK/Apps/)
     QString PathApps;

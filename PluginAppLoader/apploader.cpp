@@ -65,7 +65,9 @@ QString AppLoader::PluginLoad(QMainWindow *mw, QMenuBar *menubar, QStatusBar *st
 
     // ---------------------------------------------------
     // We can get some settings from RoboDK
-    PathApps = RDK->getParam("PATH_ROBODK") + "/Apps";
+    PathRoot = RDK->getParam("PATH_ROBODK");
+    PathPlugins = PathRoot + "/bin/plugins";
+    PathApps = PathRoot + "/Apps";
 
     QDir userPath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
 

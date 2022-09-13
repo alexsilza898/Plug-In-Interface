@@ -22,6 +22,7 @@ struct ApplicationRecord
     QVersionNumber installedVersion;
     QVersionNumber proposedVersion;
     bool global;
+    bool plugin;
 
     void clear(){
         name.clear();
@@ -29,6 +30,7 @@ struct ApplicationRecord
         installedVersion = QVersionNumber();
         proposedVersion = QVersionNumber();
         global = false;
+        plugin = false;
     }
 };
 
@@ -42,6 +44,7 @@ public:
     ~InstallerDialog();
 
     bool processPackage(const QString& package);
+    bool addExistingPlugin(ApplicationRecord& record);
     bool addExistingApp(ApplicationRecord& record, const QDir& folder, bool global);
     void populateTable(int limit, bool installed);
 

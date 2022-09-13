@@ -99,14 +99,25 @@ bool InstallerDialog::processPackage(const QString& package){
 
         bool installed = false;
 
-        if (addExistingApp(record, globalFolder, true)) {
-            installedCount++;
-            installed = true;
-        }
+        if (manifest.value("Type").toString().compare("Plugin", Qt::CaseInsensitive) == 0) {
+            record.plugin = true;
 
-        if (addExistingApp(record, userFolder, false)) {
-            installedCount++;
-            installed = true;
+            if (addExistingPlugin(record)) {
+                installedCount++;
+                installed = true;
+            }
+        } else {
+            record.plugin = false;
+
+            if (addExistingApp(record, globalFolder, true)) {
+                installedCount++;
+                installed = true;
+            }
+
+            if (addExistingApp(record, userFolder, false)) {
+                installedCount++;
+                installed = true;
+            }
         }
 
         if (!installed) {
@@ -123,6 +134,24 @@ bool InstallerDialog::processPackage(const QString& package){
     ui->tableWidget->resizeColumnsToContents();
     ui->tableWidget->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     ui->tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+
+    return true;
+}
+
+bool InstallerDialog::addExistingPlugin(ApplicationRecord& record)
+{
+    QDir folder(pAppLoader->PathPlugins);
+    record.path = folder.filePath(record.name + ".ini");
+    if (!QFile::exists(record.path)) {
+        record.path.clear();
+        return false;
+    }
+
+    QSettings currentManifest(record.path, QSettings::IniFormat);
+    QString version = currentManifest.value("Version").toString();
+    record.installedVersion = QVersionNumber::fromString(version);
+    record.global = true;
+    records.append(record);
 
     return true;
 }
@@ -161,6 +190,9 @@ void InstallerDialog::populateTable(int limit, bool installed){
     QFileInfo globalFolderInfo(pAppLoader->PathApps);
     bool isGlobalWritable = globalFolderInfo.isWritable();
 
+    QFileInfo pluginsFolderInfo(pAppLoader->PathPlugins);
+    bool isPluginsWritable = pluginsFolderInfo.isWritable();
+
 #ifdef Q_OS_WIN
     qt_ntfs_permission_lookup--; // turn it off again
 #endif
@@ -196,6 +228,13 @@ void InstallerDialog::populateTable(int limit, bool installed){
         itemNumber->setTextAlignment(Qt::AlignCenter);
 
         QTableWidgetItem* itemName = new QTableWidgetItem(entity.name);
+        if (entity.plugin) {
+            itemName->setText(tr("Plugin: %1").arg(entity.name));
+            QFont font = itemName->font();
+            font.setBold(true);
+            itemName->setFont(font);
+        }
+
         QTableWidgetItem* itemStorage = new QTableWidgetItem(
                                             entity.global ? tr("Global") : tr("User"));
         itemStorage->setTextAlignment(Qt::AlignCenter);
@@ -226,23 +265,41 @@ void InstallerDialog::populateTable(int limit, bool installed){
 
         QComboBox* comboBox = new QComboBox();
         comboBox->setProperty("action-record", i);
-        comboBox->addItem(tr("Do nothing"));
-        if (entity.global || entity.path.isEmpty()) {
-            comboBox->addItem(tr("Install (user)"));
-        } else {
-            comboBox->addItem(tr("Update (user)"));
-        }
-        comboBox->setCurrentIndex(1);
-
-        if (isGlobalWritable) {
-            if (entity.global && !entity.path.isEmpty()) {
-                comboBox->addItem(tr("Update (global)"));
-                comboBox->setCurrentIndex(2);
+        if (entity.plugin) {
+            if (isPluginsWritable) {
+                comboBox->addItem(tr("Do nothing"));
+                if (entity.path.isEmpty()) {
+                    comboBox->addItem(tr("Install"));
+                } else {
+                    comboBox->addItem(tr("Update"));
+                }
+                comboBox->setCurrentIndex(1);
             } else {
-                comboBox->addItem(tr("Install (global)"));
+                comboBox->addItem(tr("Access denied"));
+                comboBox->setCurrentIndex(0);
+                comboBox->setDisabled(true);
             }
-            if (entity.path.isEmpty())
-                comboBox->setCurrentIndex(2);
+
+        } else {
+            comboBox->addItem(tr("Do nothing"));
+            if (entity.global || entity.path.isEmpty()) {
+                comboBox->addItem(tr("Install (user)"));
+            } else {
+                comboBox->addItem(tr("Update (user)"));
+            }
+            comboBox->setCurrentIndex(1);
+
+            if (isGlobalWritable) {
+                if (entity.global && !entity.path.isEmpty()) {
+                    comboBox->addItem(tr("Update (global)"));
+                    comboBox->setCurrentIndex(2);
+                } else {
+                    comboBox->addItem(tr("Install (global)"));
+                }
+                if (entity.path.isEmpty())
+                    comboBox->setCurrentIndex(2);
+            }
+
         }
 
         if (!entity.path.isEmpty() &&
