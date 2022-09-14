@@ -9,6 +9,7 @@
 #include <QTemporaryFile>
 #include <QSettings>
 #include <QComboBox>
+#include <QMap>
 #include <QDebug>
 
 
@@ -83,7 +84,7 @@ bool InstallerDialog::processPackage(const QString& package){
 
         QString name = unzipper.entryName();
         int slash = name.indexOf('/');
-        if (slash < 0 || name.midRef(slash).compare(QString("/AppConfig.ini")) != 0)
+        if (slash < 0 || name.midRef(slash) != "/AppConfig.ini")
             continue;
 
         name.truncate(slash);
@@ -324,6 +325,102 @@ void InstallerDialog::populateTable(int limit, bool installed){
     }
 }
 
+void InstallerDialog::installApp(Unzipper& unzipper, const ApplicationRecord& entity,
+    const QDir& folder){
+    for (quint32 i = 0; i < unzipper.entriesCount(); ++i) {
+        if (!unzipper.selectEntry(i))
+            break;
+
+        if (unzipper.entryIsDirectory())
+            continue;
+
+        QString name = unzipper.entryName();
+        if (!name.startsWith(entity.name + "/"))
+            continue;
+
+        QFileInfo fileInfo = folder.absoluteFilePath(name);
+        folder.mkpath(fileInfo.absolutePath());
+        unzipper.entryExtract(fileInfo.absoluteFilePath());
+    }
+}
+
+void InstallerDialog::installPlugin(Unzipper& unzipper, const ApplicationRecord& entity)
+{
+    QDir pluginsFolder(pAppLoader->PathPlugins);
+    QDir rootFolder(pAppLoader->PathRoot);
+
+    QMap<QString, quint32> fileMap;
+    QString pathManifest;
+    for (quint32 i = 0; i < unzipper.entriesCount(); ++i) {
+        if (!unzipper.selectEntry(i))
+            break;
+
+        if (unzipper.entryIsDirectory())
+            continue;
+
+        QString name = unzipper.entryName();
+        int slash = name.indexOf('/');
+        if (slash < 0 || name.leftRef(slash) != entity.name)
+            continue;
+
+        name = name.mid(slash + 1);
+
+        if (name == "AppConfig.ini") {
+            pathManifest = pluginsFolder.absoluteFilePath(entity.name + ".ini");
+            unzipper.entryExtract(pathManifest);
+        } else {
+            fileMap.insert(name, i);
+        }
+    }
+
+    if (pathManifest.isEmpty())
+        return;
+
+    QSettings manifest(pathManifest, QSettings::IniFormat);
+
+    QString section("Default");
+#ifdef Q_OS_WIN
+    section = "Windows";
+#elif Q_OS_DARWIN
+    section = "Darwin";
+#elif Q_OS_LINUX
+    section = "Linux";
+#endif
+
+    manifest.beginGroup(section);
+    int count = manifest.value("Count", 0).toInt();
+    for (int i = 0; i < count; ++i) {
+        QStringList fileItem = manifest.value(QString::number(i)).toStringList();
+        if (fileItem.isEmpty())
+            continue;
+
+        qDebug() << "AppLoader FileItem: " << fileItem;
+
+        auto iterator = fileMap.find(fileItem[0]);
+        if (iterator == fileMap.end() || !unzipper.selectEntry(iterator.value()))
+            continue;
+
+        if (unzipper.entryIsDirectory())
+            continue;
+
+        QString destination;
+        if (fileItem.size() > 1) {
+            destination = fileItem[1];
+            if (destination.endsWith('/'))
+                destination += fileItem[0];
+            destination = QDir::cleanPath(destination);
+            if (destination.startsWith('/'))
+                destination.remove(0, 1);
+            destination = rootFolder.absoluteFilePath(destination);
+        } else {
+            destination = pluginsFolder.absoluteFilePath(QDir::cleanPath(fileItem[0]));
+        }
+        unzipper.entryExtract(destination);
+        qDebug() << "AppLoader FileItem extracted to: " << destination;
+    }
+    manifest.endGroup();
+}
+
 void InstallerDialog::on_buttonBox_accepted(){
     Unzipper unzipper(packageName);
     if (!unzipper.open()) {
@@ -354,24 +451,14 @@ void InstallerDialog::on_buttonBox_accepted(){
 
         const ApplicationRecord& entity = records.at(comboBox->property("action-record").toInt());
 
-        for (quint32 i = 0; i < unzipper.entriesCount(); ++i) {
-            if (!unzipper.selectEntry(i))
-                break;
+        if (entity.plugin) {
+            installPlugin(unzipper, entity);
+        } else {
+            installApp(unzipper, entity, folder);
 
-            if (unzipper.entryIsDirectory())
-                continue;
-
-            QString name = unzipper.entryName();
-            if (!name.startsWith(entity.name + "/"))
-                continue;
-
-            QFileInfo fileInfo = folder.absoluteFilePath(name);
-            folder.mkpath(fileInfo.absolutePath());
-            unzipper.entryExtract(fileInfo.absoluteFilePath());
+            if (entity.path.isEmpty())
+                pAppLoader->EnableApp(folder.absoluteFilePath(entity.name), true);
         }
-
-        if (entity.path.isEmpty())
-            pAppLoader->EnableApp(folder.absoluteFilePath(entity.name), true);
     }
     accept();
 }

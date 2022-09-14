@@ -9,6 +9,7 @@
 
 
 class AppLoader;
+class Unzipper;
 
 namespace Ui {
 class InstallerDialog;
@@ -47,6 +48,8 @@ public:
     bool addExistingPlugin(ApplicationRecord& record);
     bool addExistingApp(ApplicationRecord& record, const QDir& folder, bool global);
     void populateTable(int limit, bool installed);
+    void installApp(Unzipper& unzipper, const ApplicationRecord& entity, const QDir& folder);
+    void installPlugin(Unzipper& unzipper, const ApplicationRecord& entity);
 
 private slots:
     void on_buttonBox_accepted();
